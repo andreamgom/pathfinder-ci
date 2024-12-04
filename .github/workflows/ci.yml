@@ -1,1 +1,72 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  archetype:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Verify pom.xml exists
+        run: |
+          if [ ! -f pom.xml ]; then
+            echo "Error: pom.xml not found."
+            exit 1
+          fi
+
+  build:
+    runs-on: ubuntu-22.04
+    needs: archetype
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Build and test project
+        run: mvn clean compile test package verify
+
+      - name: Generate Jacoco report
+        run: mvn jacoco:report
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: target/*.jar
+
+  coverage-check:
+    runs-on: ubuntu-22.04
+    needs: build
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+
+      - name: Verify coverage threshold
+        run: |
+          THRESHOLD=80
+          COVERAGE=$(grep -Po '<line-rate>\K[0-9.]*' target/site/jacoco/jacoco.xml | awk '{print $1 * 100}')
+          if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+            echo "Coverage below threshold: $COVERAGE%"
+            exit 1
+          fi
+          echo "Coverage meets the threshold: $COVERAGE%"
 
